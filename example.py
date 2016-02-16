@@ -33,16 +33,16 @@ async def selectexample():
   d = Chan(1)
   cases = [('r', c.recv()), ('r', c.recv()), ('s', c.send(3)), (d, d.send(1))]
   while cases:
-    (id, r), cases = await select(cases)
-    if id == 'r':
+    (id_, r), cases = await select(cases)
+    if id_ == 'r':
       print("received", r)
       if r == 3:
         cases.append(('s', c.send(5)))
-    elif id == 's':
+    elif id_ == 's':
       print("send finished")
-    elif id == d:
+    elif id_ == d:
       print ("D", await d.recv())
-      await id.send(5)
+      await id_.send(5)
 
 go(selectexample)
 
