@@ -8,7 +8,6 @@ Note that you need to pass the .loop attribute of this module when you are using
 """
 import asyncio
 
-loop = asyncio.get_event_loop()  # this thread's loop will be used - unfortunately needs to be passed everywhere as the execution takes place in a background thread
 
 class Chan:
   """
@@ -138,17 +137,23 @@ def select(futures_list):
 
 # short helper functions
 
+import threading
+import atexit
+
 count_tasks = 0
 def counter(i=0):
   global count_tasks
   count_tasks += i
   return count_tasks
 
-import atexit
+loop = asyncio.get_event_loop()  # this thread's loop will be used - unfortunately needs to be passed
+                                 # everywhere as the execution takes place in a background thread
+                                 # if you do only use Chan() and select() and not go(), you can
+                                 # omit this by forcing it to None if it causes trouble
 atexit.register(loop.close)
 
 def go(f, *args, **kwargs):
-  """adds an async function to the asyncio event loop of the worker thread and schedule it"""
+  """schedule an async function on the asyncio event loop of the worker thread"""
   async def cleanup():
     x = await f(*args, **kwargs)
     counter(-1)
@@ -158,6 +163,4 @@ def go(f, *args, **kwargs):
   asyncio.run_coroutine_threadsafe(cleanup(), loop)
   counter(+1)
   if not loop.is_running():
-    import threading
-    th = threading.Thread(name='eventloop-worker', target=loop.run_forever)
-    th.start()
+    threading.Thread(name='eventloop-worker', target=loop.run_forever).start()
