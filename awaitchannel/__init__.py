@@ -144,7 +144,10 @@ def run():
   """start the asyncio event loop with the tasks enqueued by go()"""
   loop = asyncio.get_event_loop()
   try:
-    loop.run_until_complete(asyncio.wait(go_tasks))
+    while go_tasks:
+      done, others = loop.run_until_complete(asyncio.wait(go_tasks))
+      for d in done:
+        go_tasks.remove(d)
   finally:
     loop.stop()
 
