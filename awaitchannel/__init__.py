@@ -1,10 +1,17 @@
+"""
+Extends the synchronisation objects of asyncio (e.g. Lock, Event, Condition, Semaphore, Queue) with Channels like in Go.
+Channels can be used for asynchronous or synchronous message exchange.
+The select() can be used to react on finished await-calls and thus also on sending or receiving with channels.
+The helpers go() and run() provide a simple way to setup an event loop for the concurrent functions.
+"""
 import asyncio
 
 
-# go style channel with await send/recv
-
 class Chan:
-  """can also be used as an iterator which is calling recv"""
+  """
+  Go-style channel with await send/recv
+  can also be used as an iterator which is calling recv() until a ChannelClosed exception occurs
+  """
   q = None  # data channel
   x = None  # sync channel for size=0
   size = None
@@ -35,7 +42,7 @@ class Chan:
     blocks if send was used <size> times without a recv
     blocks never for size=-1"""
     if self.is_closed:
-      raise Exception
+      raise ChannelClosed
     yield from self.q.put(item)
     if self.size == 0:
       yield from self.x.get()
@@ -52,11 +59,11 @@ class Chan:
     fails if channel is closed"""
     if self.is_closed and self.q.empty():
       self.put_nowait(self.close)
-      raise Exception
+      raise ChannelClosed
     g = yield from self.q.get()
     if self.is_closed and self.q.empty() and g == self.close:
       self.q.put_nowait(self.close)  # push back
-      raise Exception
+      raise ChannelClosed
     if self.size == 0:
       yield from self.x.put(True)
     return g
@@ -67,8 +74,11 @@ class Chan:
   async def __anext__(self):
     try:
       return await self.recv()
-    except:
+    except ChannelClosed:
       raise StopAsyncIteration
+
+class ChannelClosed(Exception):
+  pass
 
 
 ### select on await events
@@ -112,7 +122,6 @@ def select(futures_list):
   
   be aware that the results are internally buffered when more complete at the same time and thus the logical ordering can be different
   """
-  loop = asyncio.get_event_loop()
   if type(futures_list) is not SelectTasks:
     futures_list = SelectTasks(futures_list)
   if futures_list.completed:
