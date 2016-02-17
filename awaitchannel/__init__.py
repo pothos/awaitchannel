@@ -150,4 +150,4 @@ def run():
         go_tasks.remove(d)
   finally:
     loop.stop()
-
+    loop.close()
