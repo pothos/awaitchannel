@@ -1,6 +1,6 @@
 #!/usr/bin/env python3.5
 
-from awaitchannel import Chan, select, go, run
+from awaitchannel import Chan, select, go
 
 
 async def give(start, end, c):
@@ -27,17 +27,16 @@ go(consume, "A", c)
 go(consume_iter, "B", c)
 go(consume, "C", c)
 
-
 async def selectexample():
-  c = Chan()
+  s = Chan()
   d = Chan(1)
-  cases = [('r', c.recv()), ('r', c.recv()), ('s', c.send(3)), (d, d.send(1))]
+  cases = [('r', s.recv()), ('r', s.recv()), ('s', s.send(3)), (d, d.send(1))]
   while cases:
     (id_, r), cases = await select(cases)
     if id_ == 'r':
       print("received", r)
       if r == 3:
-        cases.append(('s', c.send(5)))
+        cases.append(('s', s.send(5)))
     elif id_ == 's':
       print("send finished")
     elif id_ == d:
@@ -45,6 +44,3 @@ async def selectexample():
       await id_.send(5)
 
 go(selectexample)
-
-run()
-

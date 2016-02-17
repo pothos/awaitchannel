@@ -2,10 +2,13 @@
 Extends the synchronisation objects of asyncio (e.g. Lock, Event, Condition, Semaphore, Queue) with Channels like in Go.
 Channels can be used for asynchronous or synchronous message exchange.
 The select() can be used to react on finished await-calls and thus also on sending or receiving with channels.
-The helpers go() and run() provide a simple way to setup an event loop for the concurrent functions.
+The helper go() provides a simple way to schedule the concurrent functions in an event loop of a different thread.
+
+Note that you need to pass the .loop attribute of this module when you are using functions provided by asyncio yourself.
 """
 import asyncio
 
+loop = asyncio.get_event_loop()  # this thread's loop will be used - unfortunately needs to be passed everywhere as the execution takes place in a background thread
 
 class Chan:
   """
@@ -22,12 +25,12 @@ class Chan:
     size -1 indicates an unlimited buffer size
     otherwise send will block when buffer size is reached"""
     if size == 0:
-      self.q = asyncio.Queue(1)
-      self.x = asyncio.Queue(1)
+      self.q = asyncio.Queue(1, loop=loop)
+      self.x = asyncio.Queue(1, loop=loop)
     elif size == -1:
-      self.q = asyncio.Queue(0)
+      self.q = asyncio.Queue(0, loop=loop)
     else:
-      self.q = asyncio.Queue(size)
+      self.q = asyncio.Queue(size, loop=loop)
     self.size = size
 
   @asyncio.coroutine
@@ -116,18 +119,18 @@ class SelectTasks:
 @asyncio.coroutine
 def select(futures_list):
   """
-  select on a list of identifier-await-tuples like ['r', c.recv()), (c, c.send(2))]
-  returns a tuple consiting of an identifier-result-tuple like ('r', 7) or (c, None) and
+  parameter: select on a list of identifier-await-tuples like ['r', c.recv()), (c, c.send(2))]
+  returns: a tuple consiting of an identifier-result-tuple like ('r', 7) or (c, None) and
   a special list object of pending tasks which can be directly used for the next select call or even expanded/appended on before
-  
-  be aware that the results are internally buffered when more complete at the same time and thus the logical ordering can be different
+
+  Be aware that the results are internally buffered when more complete at the same time and thus the logical ordering can be different.
   """
   if type(futures_list) is not SelectTasks:
     futures_list = SelectTasks(futures_list)
   if futures_list.completed:
     result = futures_list.completed.pop()
     return result, futures_list
-  done, running = yield from asyncio.wait(futures_list.tasks, return_when=asyncio.FIRST_COMPLETED)
+  done, running = yield from asyncio.wait(futures_list.tasks, return_when=asyncio.FIRST_COMPLETED, loop=loop)
   result = done.pop().result()
   results = [r.result() for r in done]
   return result, SelectTasks(running, already_running=True, completed=results)
@@ -135,19 +138,26 @@ def select(futures_list):
 
 # short helper functions
 
-go_tasks = []
-def go(f, *args, **kwargs):
-  """adds an async function to the asyncio event loop, must be called before run()"""
-  go_tasks.append(asyncio.ensure_future(f(*args, **kwargs)))
+count_tasks = 0
+def counter(i=0):
+  global count_tasks
+  count_tasks += i
+  return count_tasks
 
-def run():
-  """start the asyncio event loop with the tasks enqueued by go()"""
-  loop = asyncio.get_event_loop()
-  try:
-    while go_tasks:
-      done, others = loop.run_until_complete(asyncio.wait(go_tasks))
-      for d in done:
-        go_tasks.remove(d)
-  finally:
-    loop.stop()
-    loop.close()
+import atexit
+atexit.register(loop.close)
+
+def go(f, *args, **kwargs):
+  """adds an async function to the asyncio event loop of the worker thread and schedule it"""
+  async def cleanup():
+    x = await f(*args, **kwargs)
+    counter(-1)
+    if counter() == 0:
+      loop.call_soon(loop.stop)
+    return x
+  asyncio.run_coroutine_threadsafe(cleanup(), loop)
+  counter(+1)
+  if not loop.is_running():
+    import threading
+    th = threading.Thread(name='eventloop-worker', target=loop.run_forever)
+    th.start()
