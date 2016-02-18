@@ -1,7 +1,7 @@
 """
 Extends the synchronisation objects of asyncio (e.g. Lock, Event, Condition, Semaphore, Queue) with Channels like in Go.
 Channels can be used for asynchronous or synchronous message exchange.
-The select() can be used to react on finished await-calls and thus also on sending or receiving with channels.
+select() can be used to react on finished await-calls and thus also on sending or receiving with channels.
 The helper go() provides a simple way to schedule the concurrent functions in an event loop of a different thread.
 
 Note that you need to pass the .loop attribute of this module when you are using functions provided by asyncio yourself.
@@ -146,10 +146,10 @@ def counter(i=0):
   count_tasks += i
   return count_tasks
 
-loop = asyncio.get_event_loop()  # this thread's loop will be used - unfortunately needs to be passed
-                                 # everywhere as the execution takes place in a background thread
-                                 # if you do only use Chan() and select() and not go(), you can
-                                 # omit this by forcing it to None if it causes trouble
+loop = asyncio.get_event_loop()  # This thread's loop will be used - unfortunately needs to be passed
+                                 # everywhere as the execution takes place in a background thread.
+                                 # If you do only use Chan() and select() and not go(), you can
+                                 # omit this by forcing it to None if it causes trouble.
 atexit.register(loop.close)
 
 def go(f, *args, **kwargs):
