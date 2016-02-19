@@ -160,7 +160,8 @@ def go(f, *args, **kwargs):
     if counter() == 0:
       loop.call_soon(loop.stop)
     return x
-  asyncio.run_coroutine_threadsafe(cleanup(), loop)
+  r = asyncio.run_coroutine_threadsafe(cleanup(), loop)
   counter(+1)
   if not loop.is_running():
     threading.Thread(name='eventloop-worker', target=loop.run_forever).start()
+  return r
