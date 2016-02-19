@@ -4,6 +4,11 @@ Channels can be used for asynchronous or synchronous message exchange.
 select() can be used to react on finished await-calls and thus also on sending or receiving with channels.
 The helper go() provides a simple way to schedule the concurrent functions in an event loop of a different thread.
 
+from awaitchannel import Chan, select, go, ChannelClosed, loop
+
+# To run a blocking function in a background thread and get an awaitable future for it, use the run_in_executor method of the loop:
+loop.run_in_executor(None, normal_longrunning_function)
+
 Note that you need to pass the .loop attribute of this module when you are using functions provided by asyncio yourself.
 """
 import asyncio
@@ -153,7 +158,8 @@ loop = asyncio.get_event_loop()  # This thread's loop will be used - unfortunate
 atexit.register(loop.close)
 
 def go(f, *args, **kwargs):
-  """schedule an async function on the asyncio event loop of the worker thread"""
+  """schedule an async function on the asyncio event loop of the worker thread
+  returns a concurrent.future which has a (non-await) blocking .result() method to wait until the result of f() is returned"""
   async def cleanup():
     x = await f(*args, **kwargs)
     counter(-1)

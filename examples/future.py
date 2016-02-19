@@ -1,6 +1,6 @@
 #!/usr/bin/env python3.5
 
-from awaitchannel import Chan, select, go
+from awaitchannel import Chan, select, go, ChannelClosed
 
 
 c = Chan()
