@@ -11,21 +11,18 @@ async def generate(ch):
 async def filter(in_c, out_c, prime):
   # Copy the values from channel in to channel out,
   # removing those divisible by prime.
-  while True:
-    try:
-      i = await in_c.recv()  # Receive value of new variable i from in.
-    except ChannelClosed:
-      await out_c.close()
-      break
+  async for i in in_c:  # (will stop on ChannelClosed)
+    # Receive value of new variable i from in.
     if i % prime != 0:
       await out_c.send(i)  #  Send i to channel out.
+  await out_c.close()
 
 # The prime sieve: Daisy-chain filter processes together.
-async def main():  # (coroutine as it uses await)
+async def main():  # (defined as coroutine as it uses await)
   ch = Chan()  # Create a new channel.
   go(generate, ch)  # Start generate() as a coroutine.
   while True:
-    try:
+    try:  # (could also be written like above, with async for)
       prime = await ch.recv()
     except ChannelClosed:
       break
