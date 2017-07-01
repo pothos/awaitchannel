@@ -1,13 +1,15 @@
 """
 Extends the synchronisation objects of asyncio (e.g. Lock, Event, Condition, Semaphore, Queue) with Channels like in Go.
-Channels can be used for asynchronous or synchronous message exchange.
+Channels can be used for asynchronous or synchronous (blocking handshake, no order) message exchange.
 select() can be used to react on finished await-calls and thus also on sending or receiving with channels.
 The helper go() provides a simple way to schedule the concurrent functions in an event loop of a different thread.
 
 from awaitchannel import Chan, select, go, ChannelClosed, loop
 
-# To run a blocking function in a background thread and get an awaitable future for it, use the run_in_executor method of the loop:
-loop.run_in_executor(None, normal_longrunning_function)
+To run a blocking function in a background thread and get an awaitable future for it, use the run_in_executor method of the loop:
+
+    f = loop.run_in_executor(None, normal_longrunning_function)
+    res = await f
 
 Note that you need to pass the .loop attribute of this module when you are using functions provided by asyncio yourself.
 """
@@ -23,14 +25,14 @@ class Chan:
   x = None  # sync channel for size=0
   size = None
   is_closed = False
-  close = "{}{}".format(hash("Chan.closed"), "Chan.closed")  # magic string as last element
+  closed = "{}{}".format(hash("Chan.closed"), "Chan.closed")  # magic string as last element
   def __init__(self, size=0):
-    """size 0 or None indicates a blocking channel (handshake)
+    """size 0 indicates a synchronous channel (handshake)
     size -1 indicates an unlimited buffer size
     otherwise send will block when buffer size is reached"""
     if size == 0:
-      self.q = asyncio.Queue(1, loop=loop)
-      self.x = asyncio.Queue(1, loop=loop)
+      self.q = asyncio.Queue(0, loop=loop)
+      self.x = asyncio.Queue(0, loop=loop)
     elif size == -1:
       self.q = asyncio.Queue(0, loop=loop)
     else:
@@ -39,20 +41,22 @@ class Chan:
 
   @asyncio.coroutine
   def close(self):
-    """closes the channel which leads to a failure at the recv side and disallows further sending"""
+    """closes the channel which leads to a failure at the recv side if empty and disallows further sending"""
     self.is_closed = True
-    yield from self.q.put(self.close)
+    if not self.q.full():
+      self.q.put_nowait(self.closed)
 
   @asyncio.coroutine
   def send(self, item):
-    """blocks if size=0 until recv is called
+    """blocks if size=0 until there is a recv and this send operation was chosen
     blocks if send was used <size> times without a recv
     blocks never for size=-1"""
     if self.is_closed:
       raise ChannelClosed
-    yield from self.q.put(item)
     if self.size == 0:
       yield from self.x.get()
+      # randomizing item with those of other pending sends is not necessary because of x.get()
+    yield from self.q.put(item)
 
   def send_ready(self):
     return not self.q.full()
@@ -63,16 +67,20 @@ class Chan:
   @asyncio.coroutine
   def recv(self):
     """blocks until something is available
-    fails if channel is closed"""
-    if self.is_closed and self.q.empty():
-      self.put_nowait(self.close)
-      raise ChannelClosed
-    g = yield from self.q.get()
-    if self.is_closed and self.q.empty() and g == self.close:
-      self.q.put_nowait(self.close)  # push back
-      raise ChannelClosed
+    fails if channel is closed after all is processed"""
     if self.size == 0:
       yield from self.x.put(True)
+    if self.is_closed:
+      if self.q.empty():
+        self.q.put_nowait(self.closed)
+        raise ChannelClosed
+      if not self.q.full():
+        self.q.put_nowait(self.closed)
+    g = yield from self.q.get()
+    if self.is_closed and g == self.closed:
+      if not self.q.full():
+        self.q.put_nowait(self.closed)  # push back for others
+      raise ChannelClosed
     return g
 
   async def __aiter__(self):

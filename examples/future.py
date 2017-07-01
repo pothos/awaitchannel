@@ -4,8 +4,9 @@ from awaitchannel import Chan, select, go, ChannelClosed
 
 
 c = Chan()
-go(c.send, 4)
+go(c.send, 4)  # start the send itself as coroutine
 
-x = go(c.recv).result()
-print(x)
+f = go(c.recv)  # start the receive as coroutine
+x = f.result()
+print("got", x)
 
